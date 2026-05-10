@@ -1,24 +1,24 @@
 package com.example.androidpractice16_1;
 
-import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.media.Image;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
-import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.LifecycleOwner;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import androidx.lifecycle.LifecycleOwner;
 
 public class UdpVideoChat {
     private MainActivity activity;
@@ -28,8 +28,8 @@ public class UdpVideoChat {
     private int remotePort, localPort;
 
     private ProcessCameraProvider cameraProvider;
+    private Preview preview;
     private ImageAnalysis imageAnalysis;
-    private PreviewView previewView; // 如果需要，但我们用 SurfaceView 直接绘制预览
 
     public UdpVideoChat(MainActivity activity, SurfaceView svLocal, SurfaceView svRemote,
                         String remoteIp, int remotePort, int localPort) {
@@ -41,12 +41,10 @@ public class UdpVideoChat {
         this.localPort = localPort;
     }
 
-    @SuppressLint("UnsafeOptInUsageError")
     public void start() {
         try {
             // 初始化 UDP 收发
             handler = new UdpVideoHandler(svRemote.getHolder(), remoteIp, remotePort, localPort);
-            // 设置远程帧回调，在 SurfaceView 上绘制
             handler.setCallback(bitmap -> {
                 Canvas canvas = svRemote.getHolder().lockCanvas();
                 if (canvas != null) {
@@ -71,14 +69,17 @@ public class UdpVideoChat {
         }
     }
 
-    @SuppressLint("UnsafeOptInUsageError")
     private void bindCameraUseCases() {
-        CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA; // 前置摄像头
+        CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
 
-        // 预览：直接渲染到 svLocal
-        PreviewView previewView = new PreviewView(activity); // 用 SurfaceView 更直接
-        // 我们改用 SurfaceView 的 SurfaceHolder 作为预览目标
-        SurfaceHolder localHolder = svLocal.getHolder();
+        // 构建 Preview，并通过 SurfaceProvider 绑定到 SurfaceView
+        preview = new Preview.Builder().build();
+        preview.setSurfaceProvider(activity.getMainExecutor(), request -> {
+            Surface surface = svLocal.getHolder().getSurface();
+            request.provideSurface(surface, activity.getMainExecutor(), result -> {
+                // 此处可处理 surface 释放，留着空实现即可
+            });
+        });
 
         // 图像分析，用于获取帧并发送
         imageAnalysis = new ImageAnalysis.Builder()
@@ -90,12 +91,13 @@ public class UdpVideoChat {
             imageProxy.close();
         });
 
-        // 将预览和分析绑定到生命周期
+        // 绑定到生命周期
         cameraProvider.bindToLifecycle((LifecycleOwner) activity, cameraSelector,
-                new Preview.Builder().setTargetSurface(localHolder.getSurface()).build(),
+                preview,
                 imageAnalysis);
     }
 
+    @ExperimentalGetImage
     private void sendFrameFromImage(ImageProxy imageProxy) {
         Image image = imageProxy.getImage();
         if (image == null) return;
@@ -116,7 +118,7 @@ public class UdpVideoChat {
         byte[] nv21 = yuv420888ToNv21(image);
         YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, width, height, null);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        yuvImage.compressToJpeg(new Rect(0, 0, width, height), 50, out); // 质量 50
+        yuvImage.compressToJpeg(new Rect(0, 0, width, height), 50, out);
         return out.toByteArray();
     }
 
@@ -132,7 +134,6 @@ public class UdpVideoChat {
         ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
 
         yBuffer.get(nv21, 0, ySize);
-        // UV 交错写入 NV21 的 VU 部分
         for (int i = 0; i < uvSize; i++) {
             nv21[ySize + i * 2] = vBuffer.get(i);     // V
             nv21[ySize + i * 2 + 1] = uBuffer.get(i); // U
