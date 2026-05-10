@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <!-- 连接配置 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/et_remoteip"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="对方 IP"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/et_remoteport"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:hint="端口"
+            android:inputType="number"
+            android:text="5678" />
+
+        <EditText
+            android:id="@+id/et_localport"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:hint="本地端口"
+            android:inputType="number"
+            android:text="1234" />
+
+        <Button
+            android:id="@+id/btn_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="开始" />
+    </LinearLayout>
+
+    <!-- 双画面 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <SurfaceView
+            android:id="@+id/sv_local"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <SurfaceView
+            android:id="@+id/sv_remote"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+</LinearLayout>
