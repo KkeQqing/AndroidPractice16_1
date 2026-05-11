@@ -4,8 +4,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.util.Log;
 import android.view.SurfaceHolder;
-import java.io.ByteArrayOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -16,18 +16,16 @@ public class UdpVideoHandler {
     private DatagramSocket sendSocket, recvSocket;
     private InetAddress remoteAddr;
     private int remotePort;
-    private Thread recvThread, sendThread;
+    private Thread recvThread;
     private volatile boolean isRunning = false;
 
     // 接收端重组缓存
     private ConcurrentHashMap<Integer, FrameSplitter.FrameReceiver> frameMap = new ConcurrentHashMap<>();
     private AtomicInteger frameId = new AtomicInteger(0);
 
-    // 渲染用 SurfaceHolder
     private SurfaceHolder remoteHolder;
     private BitmapFactory.Options bmpOptions = new BitmapFactory.Options();
 
-    // 待发送帧队列（简化，直接回调发送）
     private Callback callback;
 
     public interface Callback {
@@ -39,7 +37,9 @@ public class UdpVideoHandler {
         this.remoteAddr = InetAddress.getByName(remoteIp);
         this.remotePort = remotePort;
         recvSocket = new DatagramSocket(localPort);
-        sendSocket = new DatagramSocket(); // 随机本地端口发送
+        Log.d("VideoChat", "接收Socket绑定成功，端口: " + recvSocket.getLocalPort());
+        sendSocket = new DatagramSocket();
+        Log.d("VideoChat", "发送Socket创建成功，本地端口: " + sendSocket.getLocalPort());
     }
 
     public void setCallback(Callback callback) {
@@ -54,12 +54,13 @@ public class UdpVideoHandler {
     private void startReceive() {
         recvThread = new Thread(() -> {
             byte[] buf = new byte[1600];
+            Log.d("VideoChat", "接收线程启动，监听端口: " + recvSocket.getLocalPort());
             while (isRunning) {
                 try {
                     DatagramPacket packet = new DatagramPacket(buf, buf.length);
                     recvSocket.receive(packet);
+                    Log.d("VideoChat", "收到UDP包, 来自: " + packet.getAddress() + ":" + packet.getPort() + ", 长度: " + packet.getLength());
 
-                    // 解析包头
                     if (packet.getLength() < 8) continue;
                     int frameId = ((packet.getData()[0] & 0xFF) << 24) |
                             ((packet.getData()[1] & 0xFF) << 16) |
@@ -75,36 +76,39 @@ public class UdpVideoHandler {
                     FrameSplitter.FrameReceiver receiver = frameMap.computeIfAbsent(frameId,
                             k -> new FrameSplitter.FrameReceiver(frameId, totalPackets));
                     if (receiver.addPacket(packetIndex, data)) {
-                        // 完整帧已收全，解码并显示
                         byte[] jpegData = receiver.getAssembledData();
+                        Log.d("VideoChat", "完整帧收全, 大小: " + jpegData.length);
                         frameMap.remove(frameId);
-                        // 解码为 Bitmap
                         Bitmap bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length, bmpOptions);
                         if (bitmap != null && callback != null) {
                             callback.onRemoteFrameReady(bitmap);
                         }
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    if (isRunning) {
+                        Log.e("VideoChat", "接收异常", e);
+                    }
                 }
             }
+            Log.d("VideoChat", "接收线程结束");
         });
         recvThread.start();
     }
 
-    // 发送一帧 JPEG 数据（由采集线程调用）
     public void sendFrame(byte[] jpegData) {
         if (!isRunning || jpegData == null || jpegData.length == 0) return;
         int id = frameId.incrementAndGet();
         byte[][] packets = FrameSplitter.split(id, jpegData);
+        Log.d("VideoChat", "准备发送帧ID=" + id + ", 分片数=" + packets.length + " 到 " + remoteAddr + ":" + remotePort);
         for (byte[] packet : packets) {
             try {
                 DatagramPacket dp = new DatagramPacket(packet, packet.length, remoteAddr, remotePort);
                 sendSocket.send(dp);
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e("VideoChat", "发送出错", e);
             }
         }
+        Log.d("VideoChat", "发送完成帧ID=" + id);
     }
 
     public void stop() {
