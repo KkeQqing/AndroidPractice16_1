@@ -13,3 +13,24 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# auto-added ignore rules
+.idea/
+*.ipr
+*.iws
+.vscode/
+.vs/
+*.suo
+*.user
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+.gradle/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.dex
+build/
