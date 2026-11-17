@@ -34,3 +34,6 @@ captures/
 *.aab
 *.dex
 build/
+
+# auto-added ignore rules
+*.aar
